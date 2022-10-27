@@ -2,10 +2,14 @@ import Crawler from 'crawler';
 import { parse } from 'json2csv'
 import fastQ from 'fastq';
 import fs from 'fs';
+import { unlink } from 'fs/promises'
 
 
 const base = 'https://www.1000bulbs.com'
-var stream = fs.createWriteStream('./bulbs.csv', { flags: 'a' });
+const filename = './bulbs.csv'
+
+
+var stream = fs.createWriteStream(filename, { flags: 'a' });
 
 
 const queue = fastQ.promise(async (args) => {
@@ -34,14 +38,24 @@ const descriptionCrawler = new Crawler({
       var $ = res.$;
 
       const product = {};
+      const meta = {};
 
       const heading = $('.product-heading-align');
-      product.id = $($('form')[2]).attr('data-id')
-      product.title = $(heading).find('h1').text().replaceAll('\n', '')
-      product.subtitle = $(heading).find('h2').text().replaceAll('\n', '')
-      product.imageUrl = $('.default.image-thumb.no-click').attr('data-image')
-      product.description = $('.description').find('ul,p').text()
-      product.documents = [];
+
+      meta.id = $($('form')[2]).attr('data-id')
+
+      product.Title = $(heading).find('h1').text().replaceAll('\n', '')
+      product.Handle = product.Title.replaceAll(' ', '-')
+      product.Body = $('.description').html()
+      product.Vendor = '';
+      product['Product Category'] = '';
+      product.Tags = ''
+      product.Published = 'TRUE'
+
+
+      meta.subtitle = $(heading).find('h2').text().replaceAll('\n', '')
+
+      meta.documents = [];
 
       $('.documents').find('ul').find('li').each((i, elem) => {
         const $elem = $(elem);
@@ -49,9 +63,10 @@ const descriptionCrawler = new Crawler({
           title: $elem.text().replaceAll('\n', ''),
           href: $elem.find('a').attr('href')
         }
-        product.documents.push(doc)
+        meta.documents.push(doc)
       })
-      product.specification = []
+
+      meta.specification = []
 
       $('#Specifications').find('table').each((i, elem) => {
         const $elem = $(elem);
@@ -66,9 +81,59 @@ const descriptionCrawler = new Crawler({
               row.value = $item.text().replaceAll('\n', '');
             }
           })
-          product.specification.push(row)
+          meta.specification.push(row)
         })
       })
+
+      meta.specification.forEach(({ key, value }, index) => {
+        if (key === 'Brand') {
+          product.Vendor = value
+        }
+        product[`Option${index + 1} Name`] = key;
+        product[`Option${index + 1} Value`] = value;
+      })
+
+      product['Variant SKU'] = ''
+      product['Variant Grams'] = '';
+      product['Variant Inventory Tracker'] = ''
+      product['Variant Inventory Qty'] = 1
+      product['Variant Inventory Policy'] = 'deny'
+      product['Variant Fulfillment Service'] = 'manual'
+      const price = Number($('strong.price').text().replace('\n', '').replace('$', ''))
+
+      product['Variant Price'] = price
+      product['Variant Compare At Price'] = price + (price * 0.2);
+      product['Variant Requires Shipping'] = 'TRUE'
+      product['Variant Taxable'] = 'FALSE'
+      product['Variant Barcode'] = ''
+      product['Image Src'] = $('.default.image-thumb.no-click').attr('data-image')
+      product['Image Position'] = 1
+      product['Image Alt Text'] = product.Title
+      product['Gift Card'] = 'FALSE'
+      product['SEO Title'] = product.Title
+      product['SEO Description'] = $('.description').text().replace('Description', '').trim()
+      product['Google Shopping / Gender'] = ''
+      product['Google Shopping / Age Group'] = ''
+      product['Google Shopping / MPN'] = ''
+      product['Google Shopping / AdWords Grouping'] = ''
+      product['Google Shopping / AdWords Labels'] = ''
+      product['Google Shopping / Condition'] = ''
+      product['Google Shopping / Custom Product'] = ''
+      product['Google Shopping / Custom Label 0'] = ''
+      product['Google Shopping / Custom Label 1'] = ''
+      product['Google Shopping / Custom Label 2'] = ''
+      product['Google Shopping / Custom Label 3'] = ''
+      product['Google Shopping / Custom Label 4'] = ''
+      product['Variant Image'] = $('.default.image-thumb.no-click').attr('data-image')
+      product['Variant Weight Unit'] = ''
+      product['Variant Tax Code'] = ''
+      product['Cost per item'] = ''
+      product['Price / Canada'] = ''
+      product['Compare At Price / Canada'] = ''
+      product['Price / International'] = ''
+      product['Compare At Price / International'] = ''
+      product['Status'] = 'active'
+
       queue.push(product)
         .catch((e) => console.log('......queue failure', e))
     }
@@ -119,4 +184,9 @@ const baseCrawler = new Crawler({
 });
 
 
-baseCrawler.queue(searchUrl);
+unlink(filename).then(() => {
+  console.log('old file deleted')
+  baseCrawler.queue(searchUrl);
+}).catch(console.log)
+
+
